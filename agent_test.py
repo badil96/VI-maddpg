@@ -89,7 +89,7 @@ def agent_test(agents, env, episode,  results_dir, steps=25, save_gifs=False):
             states = test_env.reset(seed=int(i))
             # reward of each episode of each agent
             while test_env.agents:  # interact with the env for an episode
-                actions = agent.select_action(states)
+                actions = agents.select_action(states)
                 next_states, rewards, dones, infos = test_env.step(actions)       
                 states = next_states
             if save_gifs:
