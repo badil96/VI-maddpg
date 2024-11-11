@@ -17,89 +17,6 @@ from MADDPG import MADDPG
 
 from agent_test import agent_test
 
-# def agent_test(maddpg): #RPS
-#     prop_dist = {}
-#     test_env = mp_v0.parallel_env()
-    
-#     for agent_id, agent in maddpg.agents.items():
-#         probs = []
-#         # for i in range(1500):
-#         obs = np.array(np.random.choice([0,1,2], 1500))
-#         with torch.no_grad():
-#             o = torch.from_numpy(obs).unsqueeze(1).float()
-#             _, logits = agent.action(o, model_out=True)
-#             p = torch.nn.functional.softmax(logits, dim=-1)
-#                 # probs.append(p)
-#         # mean = torch.mean(torch.stack(probs), 0)
-#         # x = mean - torch.tensor([0.3333, 0.3333, 0.3333])
-#         prop_dist[agent_id] =  p
-#     return prop_dist
-
-# test_seeds = [ 530,  527,  538,  561,  141, 1217,  974, 1168,  964, 1061,  791,
-#         639,  335,  464,  398,  958,  792,  616,   39,  262, 1199,  376,
-#        1318,  609,  153,  714, 1153,  221,  449,  602,   30,  951, 1067,
-#        1073,  293,  911, 1474,  923,  993, 1031,  838, 1474,  434, 1269,
-#        1037,  190, 1403, 1364,   77,  391,  827,  377,  246,  765,  742,
-#         286, 1328,  547, 1490, 1439,  918, 1201,  125, 1181,  193,  805,
-#         224,  139,  877,  531,  421,  182,  383, 1336,  368,  303,  990,
-#         238,   16,  938, 1279,  305,  221,  931, 1323, 1365, 1021,  959,
-#         138,  254,  739, 1130, 1120, 1416,  258,  460,  370, 1317,   32,
-#          27]
-# def agent_test(agent, episode, steps, results_dir): #simple adversary
-#     gif_dir = os.path.join(results_dir, 'gif_test')
-#     if not os.path.exists(gif_dir):
-#         os.makedirs(gif_dir)
-
-#     test_env = simple_adversary_v2.parallel_env( max_cycles=25)
-#     states = test_env.reset()
-#     agent_rewards = {agent: [] for agent in test_env.agents}
-#     # frame_list = []  # used to save gif
-#     for i in test_seeds:
-#         states = test_env.reset(seed=int(i))
-#         # reward of each episode of each agent
-#         while test_env.agents:  # interact with the env for an episode
-#             actions = agent.select_action(states)
-#             next_states, rewards, dones, infos = test_env.step(actions)       
-#             states = next_states
-#         # frame_list.append(Image.fromarray(test_env.render(mode='rgb_array')))
-#         for agent_id, r in rewards.items():  # record reward
-#                 agent_rewards[agent_id].append(r) 
-
-
-#         test_env.close()
-#     # save gif
-#     # frame_list[0].save(os.path.join(gif_dir, f'out{episode}.gif'),
-#     #                  save_all=True, append_images=frame_list[1:], duration=1, loop=0)
-#     return agent_rewards
-
-# def agent_test(agent, episode, steps, results_dir): #simple tag
-#   gif_dir = os.path.join(results_dir, 'gif_test')
-#   if not os.path.exists(gif_dir):
-#       os.makedirs(gif_dir)
-
-#   test_env = simple_tag_v2.parallel_env(num_good=1, num_adversaries=2, num_obstacles=2, max_cycles=25)
-#   states = test_env.reset()
-#   agent_rewards = {agent: [0]*100 for agent in test_env.agents}
-#   agent_distances = {agent: [[] for _ in range(100)] for agent in test_env.agents}
-#   # frame_list = []  # used to save gif
-#   for i in range(len(test_seeds)):
-#     states = test_env.reset(seed=int(test_seeds[i]))
-#     while test_env.agents:  # interact with the env for an episode
-#         actions = agent.select_action(states)
-#         next_states, rewards, dones, infos = test_env.step(actions)
-#         # frame_list.append(Image.fromarray(test_env.render(mode='rgb_array')))
-#         states = next_states
-#         for agent_id, r in rewards.items():  # record reward
-#             agent_rewards[agent_id][i] += r 
-#         for agent_id, obs in states.items():
-#             agent_distances[agent_id][i].append([obs[2],obs[3]])
-
-#   test_env.close()
-#   # save gif
-#   # frame_list[0].save(os.path.join(gif_dir, f'out{episode}.gif'),
-#   #                    save_all=True, append_images=frame_list[1:], duration=1, loop=0)
-#   return agent_rewards, agent_distances
-
     
 def lookahead_avg(param, param_k, alpha=0.5):
   with torch.no_grad(): return param + alpha * (param_k - param)
@@ -120,15 +37,13 @@ def get_env(env_name, ep_len=25):
         new_env = simple_tag_v2.parallel_env(num_good=1, num_adversaries=2, num_obstacles=2, max_cycles=ep_len)
     if env_name == 'rps_v2':
         new_env = rps_v2.parallel_env(max_cycles=ep_len)
-    if env_name == 'pd_v0':
-        new_env = pd_v0.parallel_env()
     if env_name == 'mp_v0':
         new_env = mp_v0.parallel_env()
 
     new_env.reset()
     _dim_info = {}
     for agent_id in new_env.agents:
-        if env_name in ['rps_v2', 'pd_v0', 'mp_v0']:
+        if env_name in ['rps_v2', 'mp_v0']:
             _dim_info[agent_id] = []  # [obs_dim, act_dim]
             _dim_info[agent_id].append(1)
             _dim_info[agent_id].append(new_env.action_space(agent_id).n)
@@ -153,7 +68,7 @@ def get_running_reward(arr: np.ndarray, window=100):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('env_name', type=str, default='simple_adversary_v2', help='name of the env',
-                        choices=['simple_adversary_v2', 'simple_spread_v2', 'simple_tag_v2', 'rps_v2','pd_v0','mp_v0'])
+                        choices=['simple_adversary_v2', 'simple_spread_v2', 'simple_tag_v2', 'rps_v2','mp_v0'])
     parser.add_argument('--episode_num', type=int, default=30000,
                         help='total episode num during training procedure')
     parser.add_argument('--episode_length', type=int, default=25, help='steps per episode')
@@ -334,11 +249,11 @@ if __name__ == '__main__':
             #     maddpg.clear()
             #     print('cleared the buffer')
                   
-            if ((episode + 1) % 100 == 0):
+            if ((episode + 1) % 1000 == 0):
                 if args.env_name=='simple_tag_v2':
-                    test_scores_dict[episode], test_distances_dict[episode] = agent_test(maddpg,args.env_name, episode,  results_dir =result_dir, steps = 25, save_gifs=True)
+                    test_scores_dict[episode], test_distances_dict[episode] = agent_test(maddpg, args.env_name, episode, results_dir =result_dir, steps = 25, save_gifs=True)
                 else:
-                    test_scores_dict[episode] = agent_test(maddpg, args.env_name, episode,  results_dir =result_dir, steps = 25, save_gifs=False)   
+                    test_scores_dict[episode] = agent_test(maddpg, args.env_name, episode, results_dir =result_dir, steps = 25, save_gifs=False)   
 
             
         with open(os.path.join(result_dir, 'rewards_seed'+f'{seed}'+'.pkl'), 'wb') as f:  # save testing data

@@ -37,15 +37,13 @@ def get_env(env_name, ep_len=25):
         new_env = simple_tag_v2.parallel_env(num_good=1, num_adversaries=2, num_obstacles=2, max_cycles=ep_len)
     if env_name == 'rps_v2':
         new_env = rps_v2.parallel_env(max_cycles=ep_len)
-    if env_name == 'pd_v0':
-        new_env = pd_v0.parallel_env()
     if env_name == 'mp_v0':
         new_env = mp_v0.parallel_env()
 
     new_env.reset()
     _dim_info = {}
     for agent_id in new_env.agents:
-        if env_name in ['rps_v2', 'pd_v0', 'mp_v0']:
+        if env_name in ['rps_v2', 'mp_v0']:
             _dim_info[agent_id] = []  # [obs_dim, act_dim]
             _dim_info[agent_id].append(1)
             _dim_info[agent_id].append(new_env.action_space(agent_id).n)
