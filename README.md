@@ -1,6 +1,4 @@
-# VI-maddpg
-This code was used for experiments in the paper: [Variational Inequality Perspective and Optimizers
-for Multi-Agent Reinforcement Learning](https://openreview.net/forum?id=z5chjuwztL&noteId=z5chjuwztL).
+
 # References:
 - MADDPG paper: [Multi-Agent Actor-Critic for Mixed
 Cooperative-Competitive Environments](https://arxiv.org/pdf/1706.02275.pdf).
