@@ -14,6 +14,7 @@ from PIL import Image
 import mp_v0
 
 from MADDPG import MADDPG
+from MATD3 import MATD3
 
 from agent_test import agent_test
 
@@ -82,12 +83,16 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=1024, help='batch-size of replay buffer')
     parser.add_argument('--actor_lr', type=float, default=0.01, help='learning rate of actor')
     parser.add_argument('--critic_lr', type=float, default=0.01, help='learning rate of critic')
+
+    parser.add_argument('--algo', type=str, default='MADDPG', help='training algorithm', choices=['MADDPG', 'MATD3'])
+    parser.add_argument('--policy_freq', type=float, default=2, help='policy update frequency')
+    parser.add_argument('--use_target_policy_smoothing', type=bool, default=False, help='wheather to add noise to target actions when updating critics for policy smoothing or not')
     args = parser.parse_args()
 
     
 
 
-    seeds = [ 53]
+    seeds = [77,  391,  827,  377,  246, 64, 210 ,  379,  832,  1155]
     for seed in seeds:
         random.seed(seed)
         np.random.seed(seed)
@@ -104,8 +109,12 @@ if __name__ == '__main__':
         os.makedirs(result_dir)
 
         env, dim_info = get_env(args.env_name, args.episode_length)
-        maddpg = MADDPG(dim_info, args.buffer_capacity, args.batch_size, args.actor_lr, args.critic_lr,
-                        result_dir)
+
+        if args.algo == 'MADDPG':
+            model = MADDPG(dim_info, args.buffer_capacity, args.batch_size, args.actor_lr, args.critic_lr,
+                     result_dir)
+        else:
+            model = MATD3(dim_info, args.buffer_capacity, args.batch_size, args.actor_lr, args.critic_lr, args.policy_freq, args.use_target_policy_smoothing, result_dir)
 
 
         step = 0  # global step counter
@@ -129,16 +138,33 @@ if __name__ == '__main__':
         la_critics = {}
         la_ss_critics = {}
         la_sss_critics = {}
-        for agent_id, agent in maddpg.agents.items():
+        la_critics1 = {}
+        la_ss_critics1 = {}
+        la_sss_critics1 = {}
+        la_critics2 = {}
+        la_ss_critics2 = {}
+        la_sss_critics2 = {}
+        for agent_id, agent in model.agents.items():
           #append every actor params to the list
-          la_actors[agent_id] = copy.deepcopy(agent.actor)
-          la_ss_actors[agent_id] = copy.deepcopy(agent.actor)
-          la_sss_actors[agent_id] = copy.deepcopy(agent.actor)
+            la_actors[agent_id] = copy.deepcopy(agent.actor)
+            la_ss_actors[agent_id] = copy.deepcopy(agent.actor)
+            la_sss_actors[agent_id] = copy.deepcopy(agent.actor)
 
         #   append every critic params to the list
-          la_critics[agent_id] = copy.deepcopy(agent.critic)
-          la_ss_critics[agent_id] = copy.deepcopy(agent.critic)
-          la_sss_critics[agent_id] = copy.deepcopy(agent.critic)
+            if args.algo == 'MADDPG':
+                la_critics[agent_id] = copy.deepcopy(agent.critic)
+                la_ss_critics[agent_id] = copy.deepcopy(agent.critic)
+                la_sss_critics[agent_id] = copy.deepcopy(agent.critic)
+
+            if args.algo == 'MATD3':
+                la_critics1[agent_id] = copy.deepcopy(agent.critic1)
+                la_ss_critics1[agent_id] = copy.deepcopy(agent.critic1)
+                la_sss_critics1[agent_id] = copy.deepcopy(agent.critic1)
+
+                la_critics2[agent_id] = copy.deepcopy(agent.critic2)
+                la_ss_critics2[agent_id] = copy.deepcopy(agent.critic2)
+                la_sss_critics2[agent_id] = copy.deepcopy(agent.critic2)
+
 
 
         for episode in range(args.episode_num):
@@ -149,20 +175,20 @@ if __name__ == '__main__':
                 if step < args.random_steps:
                     action = {agent_id: env.action_space(agent_id).sample() for agent_id in env.agents}
                 else:
-                    action = maddpg.select_action(obs)
+                    action = model.select_action(obs)
 
                 next_obs, reward, done, info = env.step(action)
                 # env.render()
-                maddpg.add(obs, action, reward, next_obs, done)
+                model.add(obs, action, reward, next_obs, done)
 
                 for agent_id, r in reward.items():  # update reward
                     agent_reward[agent_id] += r
 
                 if step >= args.random_steps and step % args.learn_interval == 0:  # learn every few steps
-                    if maddpg.buffer_size > args.batch_size:
-                        maddpg.learn(args.batch_size, args.gamma)
-                        maddpg.update_target(args.tau)
-                        # for agent_id, agent in maddpg.agents.items():
+                    if model.buffer_size > args.batch_size:
+                        model.learn(args.batch_size, args.gamma)
+                        model.update_target(args.tau)
+                        # for agent_id, agent in model.agents.items():
                         #     agent.actor_scheduler.step()
                         #     agent.critic_scheduler.step()
 
@@ -183,84 +209,105 @@ if __name__ == '__main__':
                 # print('actor_lr:', agent.actor_scheduler.get_last_lr()) 
                 # print('critic_lr:', agent.critic_scheduler.get_last_lr()) 
 
-            # # Perform  lookahead step according to LA_STEP
-            # if ((episode + 1) % la_step == 0):
-            #   for agent_id, agent in maddpg.agents.items():
-            #       #actor
-            #       lookahead(la_actors[agent_id], agent.actor)
-            #       #la_actor = copy.deepcopy(agent.actor)
-            #       la_actors[agent_id] = copy.deepcopy(agent.actor)
+            # Perform  lookahead step according to LA_STEP
+            if ((episode + 1) % la_step == 0):
+              for agent_id, agent in model.agents.items():
+                  #actor
+                  lookahead(la_actors[agent_id], agent.actor)
+                  #la_actor = copy.deepcopy(agent.actor)
+                  la_actors[agent_id] = copy.deepcopy(agent.actor)
               
 
-            # if ((episode + 1) % la_step_critic == 0):
-            #   for agent_id, agent in maddpg.agents.items():      
-            #       #critic
-            #       lookahead(la_critics[agent_id], agent.critic)
-            #       #la_critic = copy.deepcopy(agent.critic)
-            #       la_critics[agent_id] = copy.deepcopy(agent.critic)
+            if ((episode + 1) % la_step_critic == 0):
+              for agent_id, agent in model.agents.items():      
+                  #critic
+                  if args.algo == 'MADDPG':
+                    lookahead(la_critics[agent_id], agent.critic)
+                    la_critics[agent_id] = copy.deepcopy(agent.critic)
 
-            # # # #update target networks    
-            # # #   maddpg.update_target(args.tau)
+                  if args.algo == 'MATD3':
+                    lookahead(la_critics1[agent_id], agent.critic1)
+                    la_critics1[agent_id] = copy.deepcopy(agent.critic1)
+
+                    lookahead(la_critics2[agent_id], agent.critic2)
+                    la_critics2[agent_id] = copy.deepcopy(agent.critic2)
+
+            # # #update target networks    
+            # #   model.update_target(args.tau)
                           
-            # # Perform nested lookahead step according to LA_SS_STEP
-            # if ((episode + 1) % la_ss_step == 0):
-            #   for agent_id, agent in maddpg.agents.items():
-            #       #actor
-            #       lookahead(la_ss_actors[agent_id], agent.actor)
-            #       # update both la and nested la copies
-            #       #la_actor = copy.deepcopy(agent.actor)
-            #       la_actors[agent_id] = copy.deepcopy(agent.actor)
-            #       la_ss_actors[agent_id] = copy.deepcopy(agent.actor)
+            # Perform nested lookahead step according to LA_SS_STEP
+            if ((episode + 1) % la_ss_step == 0):
+              for agent_id, agent in model.agents.items():
+                  #actor
+                  lookahead(la_ss_actors[agent_id], agent.actor)
+                  # update both la and nested la copies
+                  la_actors[agent_id] = copy.deepcopy(agent.actor)
+                  la_ss_actors[agent_id] = copy.deepcopy(agent.actor)
 
                   
-            # if ((episode + 1) % la_ss_step_critic == 0):
-            #   for agent_id, agent in maddpg.agents.items():
-            #       #critic
-            #       lookahead(la_ss_critics[agent_id], agent.critic)
-            #       #la_critic = copy.deepcopy(agent.critic)
-            #       la_critics[agent_id] = copy.deepcopy(agent.critic)
-            #       la_ss_critics[agent_id] = copy.deepcopy(agent.critic)
+            if ((episode + 1) % la_ss_step_critic == 0):
+              for agent_id, agent in model.agents.items():
+                  #critic
+                if args.algo == 'MADDPG':
+                    lookahead(la_ss_critics[agent_id], agent.critic)
+                    la_critics[agent_id] = copy.deepcopy(agent.critic)
+                    la_ss_critics[agent_id] = copy.deepcopy(agent.critic)
+                if args.algo == 'MATD3':
+                    lookahead(la_ss_critics1[agent_id], agent.critic1)
+                    #la_critic = copy.deepcopy(agent.critic)
+                    la_critics1[agent_id] = copy.deepcopy(agent.critic1)
+                    la_ss_critics1[agent_id] = copy.deepcopy(agent.critic1)
 
-            # # # #     #update target networks    
-            # # # #   maddpg.update_target(args.tau)
+                    lookahead(la_ss_critics2[agent_id], agent.critic2)
+                    #la_critic = copy.deepcopy(agent.critic)
+                    la_critics2[agent_id] = copy.deepcopy(agent.critic2)
+                    la_ss_critics2[agent_id] = copy.deepcopy(agent.critic2)
 
-            #  # Perform 2nd nested lookahead step according to LA_SS_STEP
-            # if ((episode + 1) % la_sss_step == 0):
-            #   for agent_id, agent in maddpg.agents.items():
-            #       #actor
-            #       lookahead(la_sss_actors[agent_id], agent.actor)
-            #       # update all la and nested la copies
-            #       #la_actor = copy.deepcopy(agent.actor)
-            #       la_actors[agent_id] = copy.deepcopy(agent.actor)
-            #       la_ss_actors[agent_id] = copy.deepcopy(agent.actor)
-            #       la_sss_actors[agent_id] = copy.deepcopy(agent.actor)
+
+             # Perform 2nd nested lookahead step according to LA_SS_STEP
+            if ((episode + 1) % la_sss_step == 0):
+              for agent_id, agent in model.agents.items():
+                  #actor
+                  lookahead(la_sss_actors[agent_id], agent.actor)
+                  la_actors[agent_id] = copy.deepcopy(agent.actor)
+                  la_ss_actors[agent_id] = copy.deepcopy(agent.actor)
+                  la_sss_actors[agent_id] = copy.deepcopy(agent.actor)
 
                   
-            # if ((episode + 1) % la_sss_step_critic == 0):
-            #   for agent_id, agent in maddpg.agents.items():
-            #       #critic
-            #       lookahead(la_sss_critics[agent_id], agent.critic)
-            #       #la_critic = copy.deepcopy(agent.critic)
-            #       la_critics[agent_id] = copy.deepcopy(agent.critic)
-            #       la_ss_critics[agent_id] = copy.deepcopy(agent.critic)
-            #       la_sss_critics[agent_id] =copy.deepcopy(agent.critic)
+            if ((episode + 1) % la_sss_step_critic == 0):
+              for agent_id, agent in model.agents.items():
+                  #critic
+                if args.algo == 'MADDPG':
+                    lookahead(la_sss_critics[agent_id], agent.critic)
+                    la_critics[agent_id] = copy.deepcopy(agent.critic)
+                    la_ss_critics[agent_id] = copy.deepcopy(agent.critic)
+                    la_sss_critics[agent_id] =copy.deepcopy(agent.critic)
+                if args.algo == 'MATD3':
+                    lookahead(la_sss_critics1[agent_id], agent.critic1)
+                    #la_critic = copy.deepcopy(agent.critic)
+                    la_critics1[agent_id] = copy.deepcopy(agent.critic1)
+                    la_ss_critics1[agent_id] = copy.deepcopy(agent.critic1)
+                    la_sss_critics1[agent_id] =copy.deepcopy(agent.critic1)
 
-            # if ((episode + 1) % 20000 == 0):
-            #     maddpg.clear()
-            #     print('cleared the buffer')
+                    lookahead(la_sss_critics2[agent_id], agent.critic2)
+                    #la_critic = copy.deepcopy(agent.critic)
+                    la_critics2[agent_id] = copy.deepcopy(agent.critic2)
+                    la_ss_critics2[agent_id] = copy.deepcopy(agent.critic2)
+                    la_sss_critics2[agent_id] =copy.deepcopy(agent.critic2)
+
                   
             if ((episode + 1) % 1000 == 0):
                 if args.env_name=='simple_tag_v2':
-                    test_scores_dict[episode], test_distances_dict[episode] = agent_test(maddpg, args.env_name, episode, results_dir =result_dir, steps = 25, save_gifs=True)
+                    test_scores_dict[episode], test_distances_dict[episode] = agent_test(model, args.env_name, episode, results_dir =result_dir, steps = 25, save_gifs=False)
                 else:
-                    test_scores_dict[episode] = agent_test(maddpg, args.env_name, episode, results_dir =result_dir, steps = 25, save_gifs=False)   
+                    test_scores_dict[episode] = agent_test(model, args.env_name, episode, results_dir =result_dir, steps = 25, save_gifs=False)   
 
             
         with open(os.path.join(result_dir, 'rewards_seed'+f'{seed}'+'.pkl'), 'wb') as f:  # save testing data
                 pickle.dump(test_scores_dict, f)
         with open(os.path.join(result_dir, 'distances_seed'+f'{seed}'+'.pkl'), 'wb') as f:  # save testing data
                 pickle.dump(test_distances_dict, f)
-        maddpg.save(episode_rewards)  # save model
+        model.save(episode_rewards)  # save model
 
 
         # training finishes, plot reward
@@ -272,6 +319,6 @@ if __name__ == '__main__':
         ax.legend()
         ax.set_xlabel('episode')
         ax.set_ylabel('reward')
-        title = f'training result of maddpg solve {args.env_name}'
+        title = f'training result of model solve {args.env_name} using {args.algo}'
         ax.set_title(title)
         plt.savefig(os.path.join(result_dir, title))

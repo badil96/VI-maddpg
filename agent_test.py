@@ -68,15 +68,12 @@ def agent_test(agents, env, episode,  results_dir, steps=25, save_gifs=False):
         prop_dist = {}
         for agent_id, agent in agents.agents.items():
             probs = []
-            # for i in range(1500):
-            obs = np.array(np.random.choice([0,1,2], 1500))
+            obs_env = {'rps_v2':[0,1,2], 'mp_v0':[0,1], 'hg_v0':[0,1,2]}
+            obs = np.array(np.random.choice(obs_env[env], 1500))
             with torch.no_grad():
                 o = torch.from_numpy(obs).unsqueeze(1).float()
                 _, logits = agent.action(o, model_out=True)
                 p = torch.nn.functional.softmax(logits, dim=-1)
-                    # probs.append(p)
-            # mean = torch.mean(torch.stack(probs), 0)
-            # x = mean - torch.tensor([0.3333, 0.3333, 0.3333])
             prop_dist[agent_id] =  p
         return prop_dist
 
